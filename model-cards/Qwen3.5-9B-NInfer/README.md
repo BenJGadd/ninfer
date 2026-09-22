@@ -19,8 +19,8 @@ mirror (upstream master `9e163eee` plus the port in `docs/maintainer/qwen3.5-9b-
 | Field | Value |
 |---|---|
 | Filename | `qwen3_5_9b_v3.ninfer` |
-| Size | 6,558,595,328 bytes (6.11 GiB) |
-| SHA-256 | `3d87bfe1735dc048426da408fae68f4d6d553d4fd4e692e64395d2dbdbf9d12c` |
+| Size | 6,558,595,840 bytes (6.11 GiB) |
+| SHA-256 | `9046ad3ad6ba7813e6ca69c6b1a6d26abc8543b2c673effd29e43556e5c940b9` |
 | Container version | 3 |
 | Name | `qwen3.5-9b` |
 | Recipe | `qwen3_5_9b` |
@@ -28,10 +28,13 @@ mirror (upstream master `9e163eee` plus the port in `docs/maintainer/qwen3.5-9b-
 
 716 objects (710 tensors, 6 resources): BF16 358 · FP32 48 · INT32 1 · Q4 95 · Q5 174 · Q6 3 ·
 Q8 31. `generation_config.json` is repository-pinned (`tools/frontend_resources/qwen3_5_9b/`)
-because the upstream checkpoint ships none.
+because the upstream checkpoint ships none. `chat_template.jinja` is the maintained
+`tools/chat_templates/qwen3_5.jinja`: the checkpoint template plus the `developer` role alias
+(the checkpoint template raises "Unexpected message role" on it, which breaks OpenAI-style
+clients such as pi that send their system prompt as `developer`).
 
 ```bash
-printf '%s  %s\n' '3d87bfe1735dc048426da408fae68f4d6d553d4fd4e692e64395d2dbdbf9d12c' 'qwen3_5_9b_v3.ninfer' | sha256sum --check
+printf '%s  %s\n' '9046ad3ad6ba7813e6ca69c6b1a6d26abc8543b2c673effd29e43556e5c940b9' 'qwen3_5_9b_v3.ninfer' | sha256sum --check
 ```
 
 ## Run
@@ -59,8 +62,8 @@ See `docs/performance/qwen3.5-9b.md`.
 
 `qwen3_5_9b_nvfp4_v3.ninfer` — recipe `qwen3_5_9b_nvfp4` + override
 `qwen3_5_9b_nvfp4_a4.py`: NVFP4 quantized in-repo from the BF16 checkpoint (`nvfp4_blockwise`)
-with calibrated W4A4 activation divisors (port guide §8-8.1). 6,334,363,652 bytes, SHA-256
-`741218f9d2d60b390a85c822192352eb10731b1907678c7bee3746bdbb968ebb`, 988 objects (176 NVFP4
+with calibrated W4A4 activation divisors (port guide §8-8.1). 6,334,364,164 bytes, SHA-256
+`3d5d3f938166ebacec463c6004a2d2c79e4a4ca37aa082f1e64eb903ee7e04d0`, 988 objects (176 NVFP4
 projections + 256 divisors; a/b Q8, endpoints Q6, vision and MTP unchanged). Served with the
 same flags and `--model-id qwen3.5-9b-nvfp4`. Quick perplexity 5.30 against 5.07 for the
 artifact above; prefill 33k tok/s against ~10.7k, decode ~610 tok/s against ~450 on the same
@@ -71,7 +74,7 @@ smoke prompts.
 `qwen3_5_9b_defiant_nvfp4_v3.ninfer` — the same recipe, override and engine route applied to
 `DavidAU/Qwen3.5-9B-The-Defiant-Fable-Uncensored-Heretic-NEO-IMATRIX-MAX-MTP` (16-bit
 safetensors, revision 7af0a9c4) with its own calibration; official tokenizer files (port guide
-§8.3). 6,334,363,652 bytes, SHA-256
-`b34925fb692599dfa82b71a351422b06bc160fa03d76722988475da563bd72f4`. `--model-id
+§8.3). 6,334,364,164 bytes, SHA-256
+`ad55284cc744904551ed030e95e1fa36bd67c71adbe96a8f544de31f673fd84a`. `--model-id
 qwen3.5-9b-defiant-nvfp4`. Quick perplexity 5.01. Not scored for capability or refusal
 behaviour: treat it as unmeasured beyond loading, answering and perplexity.

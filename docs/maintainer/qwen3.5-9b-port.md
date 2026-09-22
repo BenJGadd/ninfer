@@ -66,6 +66,17 @@ python -m tools.convert --model /path/to/Qwen3.5-9B --recipe qwen3_5_9b \
 - Output: 716 objects (710 tensors, 6 resources), formats BF16 358 · FP32 48 · I32 1 · Q4 95 ·
   Q5 174 · Q6 3 · Q8 31; file 6,558,595,328 bytes.
 
+### 3.1 Chat template
+
+The checkpoint's `chat_template.jinja` knows only system/user/assistant/tool and raises
+"Unexpected message role" on `developer`, which OpenAI-style clients (pi among them) use for
+the system prompt. Upstream's artifacts avoid this with maintained templates
+(`tools/chat_templates/qwen3_{6,8}.jinja`); `tools/chat_templates/qwen3_5.jinja` is the same
+treatment for the 9B — the checkpoint template with `developer` accepted wherever `system` is,
+nothing else — and both convert scripts pin it with `--resource chat_template.jinja=…`.
+Upstream's other template changes (positional system turns, final-assistant continuation,
+tool-history repair) were not ported; add them the same way if a client needs them.
+
 ## 4. The composed route
 
 The fused Ops the execution layer calls (`attn_input_proj`, `gdn_input_proj*`, `linear_swiglu`,
