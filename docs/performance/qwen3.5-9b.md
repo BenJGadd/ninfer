@@ -37,3 +37,25 @@ Quick perplexity (int8 KV, corpus `ninfer-ppl-1m-v1`, 261,167 scored tokens): ov
 (chinese_reference 5.464, english_long_form 7.627, english_reference 8.622,
 ninfer_code 2.023) against 5.073971 for the Q4/Q5 artifact — a 2.5% perplexity cost for
 weight-only NVFP4 with in-repo block quantization and no calibration.
+
+### Corpus campaign, A16 route (2026-09-22)
+
+`tools/bench/run_serve_corpus.py`, modes mtp0 and mtp3, int8 KV, stochastic sampling, RTX 5090
+at its 575 W power cap (79-82 °C, no thermal throttling). Full tables:
+`campaigns/qwen3.5-9b-nvfp4-a16/summary.md`.
+
+| Profile | Fixture / category | NVFP4 (A16) | Q4/Q5 (pre-v3 branch) |
+|---|---|---:|---:|
+| MTP0 prefill, 7,680 tokens | long_niah_8k | 1,834.9 ± 50.5 tok/s | ~10,700 tok/s |
+| MTP0 prefill, 260,096 tokens | long_niah_256k | 1,544.7 ± 1.8 tok/s | — |
+| MTP0 decode, 7,680-token context | long_niah_8k | 243.5 ± 2.1 tok/s | ~200 tok/s |
+| MTP3 decode | code | 476.9 ± 32.6 tok/s (65.1% acc.) | 391.9 ± 20.8 |
+| MTP3 decode | story | 343.9 ± 29.6 tok/s (37.4%) | 269.8 ± 17.2 |
+| MTP3 decode | translation | 483.7 ± 24.9 tok/s (65.3%) | 391.8 ± 23.5 |
+| MTP3 decode | structured | 580.8 ± 41.3 tok/s (86.3%) | 456.7 ± 41.5 |
+| MTP3 long decode | aime26_01 | 560.0 ± 8.8 tok/s (82.6%) | — |
+
+Decode is 22-27% faster than the Q4/Q5 artifact in every category, with the device wait at
+6.1-6.6 ms per MTP3 round. Prefill is 5-6x *slower*: every NVFP4 site is `A16Only`, and the A16
+route runs prompts through 32-token SIMT chunks. The W4A4 route (port guide §8.1) is the fix;
+this campaign is the A16 baseline it is measured against.
