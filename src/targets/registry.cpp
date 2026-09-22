@@ -194,6 +194,24 @@ Qwen3_6_35BA3BInstance::Qwen3_6_35BA3BInstance(std::unique_ptr<LoadedQwen3_6_35B
 
 Qwen3_6_35BA3BInstance::~Qwen3_6_35BA3BInstance() = default;
 
+LoadedQwen3_5_9B::LoadedQwen3_5_9B(std::unique_ptr<Qwen3_5_9B::LoadedModel> stable_model,
+                                   const EngineOptions& options)
+    : model(std::move(stable_model)), frontend(Qwen3_5_9B::make_frontend(*model, options)) {}
+
+LoadedQwen3_5_9B::~LoadedQwen3_5_9B() = default;
+
+Qwen3_5_9BInstance::Qwen3_5_9BInstance(std::unique_ptr<LoadedQwen3_5_9B> stable_loaded,
+                                       runtime::KvCapacityResolution resolution,
+                                       Qwen3_5_9B::SequencePlan sequence_plan,
+                                       DeviceContext& device,
+                                       const StartupObserver& startup_observer)
+    : loaded(std::move(stable_loaded)), kv_capacity_resolution(resolution),
+      capacity(sequence_plan.capacity()),
+      program(Qwen3_5_9B::create_program(*loaded->model, std::move(sequence_plan), device,
+                                         startup_observer)) {}
+
+Qwen3_5_9BInstance::~Qwen3_5_9BInstance() = default;
+
 ConstructedTarget construct_target(const EngineOptions& options, DeviceContext& device) {
     validate_options(options);
     const auto load_start = Clock::now();
@@ -213,6 +231,10 @@ ConstructedTarget construct_target(const EngineOptions& options, DeviceContext& 
     if (identity.model_id == Qwen3_6_35BA3B::model_id) {
         return construct_registered<Qwen3_6_35BA3B, LoadedQwen3_6_35BA3B, Qwen3_6_35BA3BInstance>(
             options, device, reader, load_start, Qwen3_6_35BA3B::target_key);
+    }
+    if (identity.model_id == Qwen3_5_9B::model_id) {
+        return construct_registered<Qwen3_5_9B, LoadedQwen3_5_9B, Qwen3_5_9BInstance>(
+            options, device, reader, load_start, Qwen3_5_9B::target_key);
     }
     throw std::runtime_error("artifact identity '" + identity.model_id + "/" + identity.weights_id +
                              "' has no registered target for this device");
