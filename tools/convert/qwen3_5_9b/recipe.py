@@ -126,10 +126,15 @@ def build_text_recipes(g: Geometry) -> tuple[TensorRecipe, ...]:
             )
             recipes.extend(
                 (
+                    # Qwen3.5-9B stores A_log and the GDN norm weight as F32 (the 27B stores
+                    # BF16). A_log is FP32 in the artifact anyway; the norm weight is rounded
+                    # to the BF16 the family GDN kernel consumes.
                     TensorRecipe(
                         object_prefix + "gdn/a_log",
                         Cast(
-                            _source(source_prefix + "linear_attn.A_log", (g.gdn_value_heads,)),
+                            SourceTensor(
+                                source_prefix + "linear_attn.A_log", (g.gdn_value_heads,), "F32"
+                            ),
                             inventory.FP32,
                         ),
                     ),
@@ -151,33 +156,28 @@ def build_text_recipes(g: Geometry) -> tuple[TensorRecipe, ...]:
                         ),
                     ),
                     TensorRecipe(
-                        object_prefix + "gdn/a_projection",
-                        _source(source_prefix + "linear_attn.in_proj_a.weight", (g.gdn_value_heads, h)),
-                    ),
-                    TensorRecipe(
-                        object_prefix + "gdn/b_projection",
-                        _source(source_prefix + "linear_attn.in_proj_b.weight", (g.gdn_value_heads, h)),
-                    ),
-                    TensorRecipe(
-                        object_prefix + "gdn/query_key",
-                        Slice(qkv_source, 0, 0, g.gdn_query_key_rows),
-                    ),
-                    TensorRecipe(
-                        object_prefix + "gdn/value_z",
+                        object_prefix + "gdn/a_b_projection",
                         Concat(
                             (
-                                Slice(qkv_source, 0, g.gdn_query_key_rows, g.convolution_dim),
-                                _source(
-                                    source_prefix + "linear_attn.in_proj_z.weight",
-                                    (g.value_dim, h),
-                                ),
+                                _source(source_prefix + "linear_attn.in_proj_a.weight", (g.gdn_value_heads, h)),
+                                _source(source_prefix + "linear_attn.in_proj_b.weight", (g.gdn_value_heads, h)),
                             ),
                             0,
                         ),
                     ),
+                    TensorRecipe(object_prefix + "gdn/query_key_value", qkv_source),
+                    TensorRecipe(
+                        object_prefix + "gdn/z",
+                        _source(source_prefix + "linear_attn.in_proj_z.weight", (g.value_dim, h)),
+                    ),
                     TensorRecipe(
                         object_prefix + "gdn/norm",
-                        _source(source_prefix + "linear_attn.norm.weight", (g.gdn_head_dim,)),
+                        Cast(
+                            SourceTensor(
+                                source_prefix + "linear_attn.norm.weight", (g.gdn_head_dim,), "F32"
+                            ),
+                            inventory.BF16,
+                        ),
                     ),
                     TensorRecipe(
                         object_prefix + "gdn/output",

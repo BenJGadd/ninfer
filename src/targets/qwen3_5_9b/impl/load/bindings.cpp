@@ -8,7 +8,6 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <variant>
 #include <vector>
 
 // Every extent below is spelled through TextConfig so the artifact contract and the
@@ -82,55 +81,36 @@ DensePostMixerPayload load_mlp(const MlpPlan& plan,
 FullAttentionProjectionPayload
 load_attention_projection(const FullAttentionPlan& plan,
                           const artifact::MaterializedArtifact& materialized) {
-    if (const auto* split = std::get_if<SplitAttentionProjectionPlan>(&plan.projection)) {
-        return SplitAttentionProjectionPayload{
-            .query_key  = materialized_weight(materialized, split->query_key,
-                                              C::attention_query_key_rows, C::hidden),
-            .gate_value = materialized_weight(materialized, split->gate_value,
-                                              C::attention_query_key_rows, C::hidden),
-        };
-    }
-    const auto& fused = std::get<FusedAttentionProjectionPlan>(plan.projection);
-    return FusedAttentionProjectionPayload{
-        .query_key_gate_value = materialized_weight(materialized, fused.query_key_gate_value,
-                                                    C::mtp_attention_input_rows, C::hidden),
-    };
+    FullAttentionProjectionPayload out;
+    out.query_key =
+        materialized_weight(materialized, plan.query_key, C::attention_query_key_rows, C::hidden);
+    out.gate_value =
+        materialized_weight(materialized, plan.gate_value, C::attention_query_key_rows, C::hidden);
+    out.query       = row_view(out.query_key, 0, C::query_size);
+    out.key         = row_view(out.query_key, C::query_size, C::kv_size);
+    out.output_gate = row_view(out.gate_value, 0, C::query_size);
+    out.value       = row_view(out.gate_value, C::query_size, C::kv_size);
+    return out;
 }
 
 GdnInputProjectionPayload
 load_gdn_input_projection(const GdnPlan& plan, const artifact::MaterializedArtifact& materialized) {
-    if (const auto* split = std::get_if<SplitGdnInputProjectionPlan>(&plan.input_projection)) {
-        return SplitGdnInputProjectionPayload{
-            .query_key =
-                materialized_weight(materialized, split->query_key, C::gdn_query_key_rows, C::hidden),
-            .value_z =
-                materialized_weight(materialized, split->value_z, C::gdn_value_z_rows, C::hidden),
-        };
-    }
-    const auto& fused = std::get<FusedGdnInputProjectionPlan>(plan.input_projection);
-    return FusedGdnInputProjectionPayload{
-        .query_key_value_z =
-            materialized_weight(materialized, fused.query_key_value_z,
-                                C::gdn_query_key_rows + C::gdn_value_z_rows, C::hidden),
+    return GdnInputProjectionPayload{
+        .query_key_value =
+            materialized_weight(materialized, plan.query_key_value, C::convolution_dim, C::hidden),
+        .z = materialized_weight(materialized, plan.z, C::value_dim, C::hidden),
     };
 }
 
 GdnControlProjectionPayload
 load_gdn_control_projection(const GdnPlan& plan,
                             const artifact::MaterializedArtifact& materialized) {
-    if (const auto* split = std::get_if<SplitGdnControlProjectionPlan>(&plan.control_projection)) {
-        return SplitGdnControlProjectionPayload{
-            .a_projection = materialized_weight(materialized, split->a_projection,
-                                                C::gdn_value_heads, C::hidden),
-            .b_projection = materialized_weight(materialized, split->b_projection,
-                                                C::gdn_value_heads, C::hidden),
-        };
-    }
-    const auto& fused = std::get<FusedGdnControlProjectionPlan>(plan.control_projection);
-    return FusedGdnControlProjectionPayload{
-        .a_b_projection = materialized_weight(materialized, fused.a_b_projection,
-                                              2 * C::gdn_value_heads, C::hidden),
-    };
+    GdnControlProjectionPayload out;
+    out.a_b_projection = materialized_weight(materialized, plan.a_b_projection,
+                                             2 * C::gdn_value_heads, C::hidden);
+    out.a = row_view(out.a_b_projection, 0, C::gdn_value_heads);
+    out.b = row_view(out.a_b_projection, C::gdn_value_heads, C::gdn_value_heads);
+    return out;
 }
 
 void bind_groupwise_text_layers(artifact::Binder& binder, BindingPlan& out) {
@@ -141,14 +121,12 @@ void bind_groupwise_text_layers(artifact::Binder& binder, BindingPlan& out) {
                                                                 NumericFormat::BF16, {u64(C::hidden)});
         target.is_full_attention = is_full_layer(layer);
         if (target.is_full_attention) {
-            target.attention.projection = SplitAttentionProjectionPlan{
-                .query_key  = bind_weight(binder, prefix + "attention/query_key",
-                                          NumericFormat::Q4G64_F16S,
-                                          {u64(C::attention_query_key_rows), u64(C::hidden)}),
-                .gate_value = bind_weight(binder, prefix + "attention/gate_value",
-                                          NumericFormat::Q5G64_F16S,
-                                          {u64(C::attention_query_key_rows), u64(C::hidden)}),
-            };
+            target.attention.query_key =
+                bind_weight(binder, prefix + "attention/query_key", NumericFormat::Q4G64_F16S,
+                            {u64(C::attention_query_key_rows), u64(C::hidden)});
+            target.attention.gate_value =
+                bind_weight(binder, prefix + "attention/gate_value", NumericFormat::Q5G64_F16S,
+                            {u64(C::attention_query_key_rows), u64(C::hidden)});
             target.attention.query_norm = artifact::bind_device_tensor(
                 binder, prefix + "attention/query_norm", NumericFormat::BF16, {u64(C::head_dim)});
             target.attention.key_norm = artifact::bind_device_tensor(
@@ -166,21 +144,14 @@ void bind_groupwise_text_layers(artifact::Binder& binder, BindingPlan& out) {
             target.gdn.convolution = artifact::bind_device_tensor(
                 binder, prefix + "gdn/convolution", NumericFormat::BF16,
                 {u64(C::gdn_conv_kernel), u64(C::convolution_dim)});
-            target.gdn.control_projection = SplitGdnControlProjectionPlan{
-                .a_projection = bind_weight(binder, prefix + "gdn/a_projection",
-                                            NumericFormat::BF16,
-                                            {u64(C::gdn_value_heads), u64(C::hidden)}),
-                .b_projection = bind_weight(binder, prefix + "gdn/b_projection",
-                                            NumericFormat::BF16,
-                                            {u64(C::gdn_value_heads), u64(C::hidden)}),
-            };
-            target.gdn.input_projection = SplitGdnInputProjectionPlan{
-                .query_key = bind_weight(binder, prefix + "gdn/query_key",
-                                         NumericFormat::Q4G64_F16S,
-                                         {u64(C::gdn_query_key_rows), u64(C::hidden)}),
-                .value_z   = bind_weight(binder, prefix + "gdn/value_z", NumericFormat::Q5G64_F16S,
-                                         {u64(C::gdn_value_z_rows), u64(C::hidden)}),
-            };
+            target.gdn.a_b_projection =
+                bind_weight(binder, prefix + "gdn/a_b_projection", NumericFormat::W8G32_F16S,
+                            {u64(2 * C::gdn_value_heads), u64(C::hidden)});
+            target.gdn.query_key_value =
+                bind_weight(binder, prefix + "gdn/query_key_value", NumericFormat::Q5G64_F16S,
+                            {u64(C::convolution_dim), u64(C::hidden)});
+            target.gdn.z = bind_weight(binder, prefix + "gdn/z", NumericFormat::Q5G64_F16S,
+                                       {u64(C::value_dim), u64(C::hidden)});
             target.gdn.norm = artifact::bind_device_tensor(binder, prefix + "gdn/norm",
                                                            NumericFormat::BF16,
                                                            {u64(C::gdn_value_head_dim)});

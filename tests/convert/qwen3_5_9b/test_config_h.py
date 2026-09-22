@@ -27,8 +27,10 @@ _PRIMITIVES = {
 
 def _constants() -> dict[str, int]:
     text = CONFIG_H.read_text()
+    block = re.search(r"struct TextConfig \{(.*?)\n\};", text, re.S)
+    assert block, "TextConfig block not found"
     found: dict[str, int] = {}
-    for match in re.finditer(r"static constexpr int (\w+)\s*=\s*(\d+);", text):
+    for match in re.finditer(r"static constexpr int (\w+)\s*=\s*(\d+);", block.group(1)):
         found[match.group(1)] = int(match.group(2))
     return found
 

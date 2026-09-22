@@ -155,6 +155,13 @@ W8Launch select_w8_a16_launch(std::int32_t n, std::int32_t k, std::int32_t t) {
         break;
     }
 
+    // Unregistered shapes (Qwen3.5-9B: K=4096/8192/12288/4608) take the generic routes untuned.
+    if (k % 128 == 0 && n % 32 == 0) {
+        if (t <= 4) { return launch_w8_simt_r8_c4; }
+        if (t <= 16) { return launch_w8_simt_r8_c8; }
+        if (t <= 895 || n % 64 != 0) { return launch_w8_mma_r32_c128; }
+        return launch_w8_mma_r64_c128;
+    }
     throw std::invalid_argument("w8 linear: unsupported shape or T");
 }
 

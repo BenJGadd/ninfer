@@ -78,10 +78,12 @@ def build_text_core_specs(g: Geometry) -> tuple[TensorSpec, ...]:
                         (g.gdn_conv_kernel, g.convolution_dim),
                         BF16,
                     ),
-                    _tensor(prefix + "gdn/a_projection", (g.gdn_value_heads, g.hidden), BF16),
-                    _tensor(prefix + "gdn/b_projection", (g.gdn_value_heads, g.hidden), BF16),
-                    _tensor(prefix + "gdn/query_key", (g.gdn_query_key_rows, g.hidden), Q4),
-                    _tensor(prefix + "gdn/value_z", (g.gdn_value_z_rows, g.hidden), Q5),
+                    # The 9B engine leaves are plain-linear compositions, so the GDN parents are
+                    # the checkpoint's own in_proj_qkv / in_proj_z matrices and one fused a|b
+                    # control parent (W8: the BF16 linear catalog has no [32,4096] route).
+                    _tensor(prefix + "gdn/a_b_projection", (2 * g.gdn_value_heads, g.hidden), W8),
+                    _tensor(prefix + "gdn/query_key_value", (g.convolution_dim, g.hidden), Q5),
+                    _tensor(prefix + "gdn/z", (g.value_dim, g.hidden), Q5),
                     _tensor(prefix + "gdn/norm", (g.gdn_head_dim,), BF16),
                     _tensor(prefix + "gdn/output", (g.hidden, g.value_dim), Q5),
                 )
@@ -144,10 +146,11 @@ def build_row_view_specs(g: Geometry) -> tuple[LogicalRowViewSpec, ...]:
         LogicalRowViewSpec("text/layers/{l}/attention/key", "text/layers/{l}/attention/query_key", q, q + kv, (kv, h), full),
         LogicalRowViewSpec("text/layers/{l}/attention/output_gate", "text/layers/{l}/attention/gate_value", 0, q, (q, h), full),
         LogicalRowViewSpec("text/layers/{l}/attention/value", "text/layers/{l}/attention/gate_value", q, q + kv, (kv, h), full),
-        LogicalRowViewSpec("text/layers/{l}/gdn/query", "text/layers/{l}/gdn/query_key", 0, kd, (kd, h), gdn),
-        LogicalRowViewSpec("text/layers/{l}/gdn/key", "text/layers/{l}/gdn/query_key", kd, 2 * kd, (kd, h), gdn),
-        LogicalRowViewSpec("text/layers/{l}/gdn/value", "text/layers/{l}/gdn/value_z", 0, vd, (vd, h), gdn),
-        LogicalRowViewSpec("text/layers/{l}/gdn/z", "text/layers/{l}/gdn/value_z", vd, 2 * vd, (vd, h), gdn),
+        LogicalRowViewSpec("text/layers/{l}/gdn/query", "text/layers/{l}/gdn/query_key_value", 0, kd, (kd, h), gdn),
+        LogicalRowViewSpec("text/layers/{l}/gdn/key", "text/layers/{l}/gdn/query_key_value", kd, 2 * kd, (kd, h), gdn),
+        LogicalRowViewSpec("text/layers/{l}/gdn/value", "text/layers/{l}/gdn/query_key_value", 2 * kd, 2 * kd + vd, (vd, h), gdn),
+        LogicalRowViewSpec("text/layers/{l}/gdn/a_projection", "text/layers/{l}/gdn/a_b_projection", 0, g.gdn_value_heads, (g.gdn_value_heads, h), gdn),
+        LogicalRowViewSpec("text/layers/{l}/gdn/b_projection", "text/layers/{l}/gdn/a_b_projection", g.gdn_value_heads, 2 * g.gdn_value_heads, (g.gdn_value_heads, h), gdn),
         LogicalRowViewSpec("text/layers/{l}/mlp/gate", "text/layers/{l}/mlp/gate_up", 0, mid, (mid, h), every),
         LogicalRowViewSpec("text/layers/{l}/mlp/up", "text/layers/{l}/mlp/gate_up", mid, 2 * mid, (mid, h), every),
         LogicalRowViewSpec("mtp/layer/attention/query", "mtp/layer/attention/query_key_gate_value", 0, q, (q, h), None),
@@ -181,7 +184,7 @@ def expected_text_core_count(g: Geometry) -> int:
     full = len(g.full_attention_layers)
     gdn = len(g.gdn_layers)
     # embedding + per layer (input_norm, post_attention_norm, gate_up, down) + mixer objects + final_norm + output_head
-    return 1 + g.layers * 4 + full * 5 + gdn * 9 + 2
+    return 1 + g.layers * 4 + full * 5 + gdn * 8 + 2
 
 
 TEXT_CORE_TENSOR_SPECS = build_text_core_specs(GEOMETRY)

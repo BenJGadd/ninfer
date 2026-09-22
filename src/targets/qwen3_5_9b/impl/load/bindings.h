@@ -15,7 +15,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <utility>
-#include <variant>
 
 namespace ninfer::targets::qwen3_5_9b::detail {
 
@@ -34,52 +33,23 @@ struct MlpPlan {
     WeightPlan down;
 };
 
-// The groupwise-int artifact stores every fused projection as one split pair of parents.
-// The payload variants below keep the same shape as the Qwen3.6-27B leaves so the family
-// runtime's projection calls are identical; only the Split alternatives are ever bound.
-struct SplitAttentionProjectionPlan {
-    WeightPlan query_key;
-    WeightPlan gate_value;
-};
-
-struct FusedAttentionProjectionPlan {
-    WeightPlan query_key_gate_value;
-};
-
+// Every 9B leaf is a composition of plain `ops::linear` calls, so each projection group is
+// stored as one physical parent per contiguous output plus row views into it.
 struct FullAttentionPlan {
-    std::variant<SplitAttentionProjectionPlan, FusedAttentionProjectionPlan> projection;
+    WeightPlan query_key;  // rows: query | key
+    WeightPlan gate_value; // rows: output gate | value
     artifact::ObjectHandle query_norm;
     artifact::ObjectHandle key_norm;
     WeightPlan output;
 };
 
-struct SplitGdnInputProjectionPlan {
-    WeightPlan query_key;
-    WeightPlan value_z;
-};
-
-struct FusedGdnInputProjectionPlan {
-    WeightPlan query_key_value_z;
-};
-
-struct SplitGdnControlProjectionPlan {
-    WeightPlan a_projection;
-    WeightPlan b_projection;
-};
-
-struct FusedGdnControlProjectionPlan {
-    WeightPlan a_b_projection;
-};
-
-using GdnControlProjectionPlan =
-    std::variant<SplitGdnControlProjectionPlan, FusedGdnControlProjectionPlan>;
-
 struct GdnPlan {
     artifact::ObjectHandle a_log;
     artifact::ObjectHandle dt_bias;
     artifact::ObjectHandle convolution;
-    GdnControlProjectionPlan control_projection;
-    std::variant<SplitGdnInputProjectionPlan, FusedGdnInputProjectionPlan> input_projection;
+    WeightPlan a_b_projection;   // rows: a | b
+    WeightPlan query_key_value;  // rows: query | key | value (the convolution input, in order)
+    WeightPlan z;
     artifact::ObjectHandle norm;
     WeightPlan output;
 };
@@ -139,41 +109,25 @@ struct DensePostMixerPayload {
     Weight down;
 };
 
-struct SplitAttentionProjectionPayload {
+struct FullAttentionProjectionPayload {
     Weight query_key;
     Weight gate_value;
+    Weight query;       // row view of query_key
+    Weight key;         // row view of query_key
+    Weight output_gate; // row view of gate_value
+    Weight value;       // row view of gate_value
 };
 
-struct FusedAttentionProjectionPayload {
-    Weight query_key_gate_value;
-};
-
-using FullAttentionProjectionPayload =
-    std::variant<SplitAttentionProjectionPayload, FusedAttentionProjectionPayload>;
-
-struct SplitGdnInputProjectionPayload {
-    Weight query_key;
-    Weight value_z;
-};
-
-struct FusedGdnInputProjectionPayload {
-    Weight query_key_value_z;
-};
-
-using GdnInputProjectionPayload =
-    std::variant<SplitGdnInputProjectionPayload, FusedGdnInputProjectionPayload>;
-
-struct SplitGdnControlProjectionPayload {
-    Weight a_projection;
-    Weight b_projection;
-};
-
-struct FusedGdnControlProjectionPayload {
+struct GdnControlProjectionPayload {
     Weight a_b_projection;
+    Weight a; // row view
+    Weight b; // row view
 };
 
-using GdnControlProjectionPayload =
-    std::variant<SplitGdnControlProjectionPayload, FusedGdnControlProjectionPayload>;
+struct GdnInputProjectionPayload {
+    Weight query_key_value;
+    Weight z;
+};
 
 struct GdnProjectionPayload {
     Tensor a_log;

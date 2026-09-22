@@ -32,7 +32,10 @@ def test_same_roles_and_formats_as_the_27b_template() -> None:
 
     ours = _tensor_by_name()
     theirs = {spec.name: spec for spec in inventory_27b.TENSOR_SPECS}
+    own_roles = ("gdn/a_b_projection", "gdn/query_key_value", "gdn/z")
     for name, spec in ours.items():
+        if name.endswith(own_roles):
+            continue  # 9B-only storage roles, see qwen3.5-9b-artifact.md
         assert name in theirs, name
         assert spec.format == theirs[name].format, name
         assert spec.layout == theirs[name].layout, name
@@ -46,8 +49,9 @@ def test_key_shapes_follow_geometry() -> None:
     assert t["text/layers/3/attention/query_key"].shape == (g.query_size + g.kv_size, g.hidden)
     assert t["text/layers/3/attention/output"].shape == (g.hidden, g.query_size)
     assert t["text/layers/0/gdn/convolution"].shape == (g.gdn_conv_kernel, g.convolution_dim)
-    assert t["text/layers/0/gdn/query_key"].shape == (2 * g.key_dim, g.hidden)
-    assert t["text/layers/0/gdn/value_z"].shape == (2 * g.value_dim, g.hidden)
+    assert t["text/layers/0/gdn/query_key_value"].shape == (g.convolution_dim, g.hidden)
+    assert t["text/layers/0/gdn/z"].shape == (g.value_dim, g.hidden)
+    assert t["text/layers/0/gdn/a_b_projection"].shape == (2 * g.gdn_value_heads, g.hidden)
     assert t["text/layers/0/gdn/a_log"].shape == (g.gdn_value_heads,)
     assert t["text/layers/0/mlp/gate_up"].shape == (2 * g.intermediate, g.hidden)
     assert t["mtp/input_projection"].shape == (g.hidden, 2 * g.hidden)

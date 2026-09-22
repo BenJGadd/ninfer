@@ -24,14 +24,12 @@ def test_every_checkpoint_tensor_is_consumed_exactly_once() -> None:
 
 def test_gdn_and_attention_slices_match_geometry() -> None:
     g = GEOMETRY
-    qk = recipe.RECIPES_BY_NAME["text/layers/0/gdn/query_key"].expression
-    assert isinstance(qk, recipe.Slice) and (qk.begin, qk.end) == (0, 2 * g.key_dim)
-    vz = recipe.RECIPES_BY_NAME["text/layers/0/gdn/value_z"].expression
-    assert isinstance(vz, recipe.Concat)
-    first = vz.sources[0]
-    assert isinstance(first, recipe.Slice) and (first.begin, first.end) == (
-        2 * g.key_dim,
-        g.convolution_dim,
+    qkv = recipe.RECIPES_BY_NAME["text/layers/0/gdn/query_key_value"].expression
+    assert isinstance(qkv, recipe.SourceTensor) and qkv.shape == (g.convolution_dim, g.hidden)
+    ab = recipe.RECIPES_BY_NAME["text/layers/0/gdn/a_b_projection"].expression
+    assert isinstance(ab, recipe.Concat) and recipe.expression_shape(ab) == (
+        2 * g.gdn_value_heads,
+        g.hidden,
     )
     assert recipe.expression_shape(
         recipe.RECIPES_BY_NAME["text/layers/3/attention/query_key"].expression

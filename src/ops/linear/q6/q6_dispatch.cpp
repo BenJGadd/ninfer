@@ -59,6 +59,15 @@ Q6Launch select_q6_a16_launch(std::int32_t n, std::int32_t k, std::int32_t t) {
         break;
     }
 
+    // Unregistered shapes (Qwen3.5-9B: K=4096) take the generic routes untuned.
+    if (k % 128 == 0 && n % 64 == 0) {
+        if (t <= 4) { return launch_q6_simt_r8_c4; }
+        if (t <= 16) { return launch_q6_mma_r64_c16_k128; }
+        if (t <= 24) { return launch_q6_mma_r64_c24_k128; }
+        if (t <= 32) { return launch_q6_mma_r64_c32_k128; }
+        if (t <= 48) { return launch_q6_mma_r64_c48_k128; }
+        return launch_q6_mma_r64_c128;
+    }
     throw std::invalid_argument("q6 linear: unsupported shape or T");
 }
 

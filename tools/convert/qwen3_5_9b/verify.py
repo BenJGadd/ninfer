@@ -53,19 +53,29 @@ DIRECT_PROBE_OBJECTS = (
 )
 QUANT_PROBE_OBJECTS = (
     f"text/layers/{_FIRST_FULL}/attention/query_key",
-    f"text/layers/{_FIRST_GDN}/gdn/value_z",
+    f"text/layers/{_FIRST_GDN}/gdn/query_key_value",
+    f"text/layers/{_FIRST_GDN}/gdn/a_b_projection",
     "vision/patch_embedding",
     "mtp/layer/attention/query_key_gate_value",
     "text/draft_head",
 )
-_VALUE_Z_PROBE_OBJECT = f"text/layers/{_FIRST_GDN}/gdn/value_z"
-# Rows straddling the value|z boundary inside the fused parent.
-_VALUE_Z_PROBE_ROWS = (
-    0,
-    GEOMETRY.value_dim - 1,
-    GEOMETRY.value_dim,
-    GEOMETRY.gdn_value_z_rows - 1,
-)
+# Rows straddling every fused-row boundary inside the two GDN parents.
+_FUSED_PROBE_ROWS = {
+    f"text/layers/{_FIRST_GDN}/gdn/query_key_value": (
+        0,
+        GEOMETRY.key_dim - 1,
+        GEOMETRY.key_dim,
+        2 * GEOMETRY.key_dim - 1,
+        2 * GEOMETRY.key_dim,
+        GEOMETRY.convolution_dim - 1,
+    ),
+    f"text/layers/{_FIRST_GDN}/gdn/a_b_projection": (
+        0,
+        GEOMETRY.gdn_value_heads - 1,
+        GEOMETRY.gdn_value_heads,
+        2 * GEOMETRY.gdn_value_heads - 1,
+    ),
+}
 _CONVOLUTION_ALIAS_SHAPE = (GEOMETRY.convolution_dim, GEOMETRY.gdn_conv_kernel)
 
 _FP16_MIN_SUBNORMAL = 2.0**-24
@@ -598,11 +608,7 @@ def verify_payloads(
             obj = artifact.find(object_name)
             if not isinstance(obj, TensorObject) or len(obj.shape) != 2:
                 _contract_error(f"quantized probe is not a matrix: {object_name}")
-            rows = (
-                _VALUE_Z_PROBE_ROWS
-                if object_name == _VALUE_Z_PROBE_OBJECT
-                else _three_indices(obj.shape[0])
-            )
+            rows = _FUSED_PROBE_ROWS.get(object_name, _three_indices(obj.shape[0]))
             source_rows = _materialize_rows(
                 recipe.RECIPES_BY_NAME[object_name].expression,
                 rows,

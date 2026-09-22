@@ -71,6 +71,12 @@ Q5Launch select_q5_a16_launch(std::int32_t n, std::int32_t k, std::int32_t t) {
         break;
     }
 
+    // Unregistered shapes (Qwen3.5-9B: K=4096/12288) take the generic routes untuned.
+    if (k % 128 == 0 && n % 64 == 0) {
+        if (t <= 4) { return launch_q5_simt_r8_c4; }
+        if (t <= 24) { return launch_q5_simt_r8_c8; }
+        return launch_q5_mma_r64_c128;
+    }
     throw std::invalid_argument("q5 linear: unsupported shape or T");
 }
 
