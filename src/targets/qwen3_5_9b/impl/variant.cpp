@@ -53,18 +53,23 @@ void require_groupwise(WeightsProfile weights_profile) {
     }
 }
 
-// Column count of a contiguous activation regardless of how the caller shaped its trailing axes.
-std::int32_t columns_of(const Tensor& t) {
-    return static_cast<std::int32_t>(static_cast<std::int64_t>(t.ne[1]) * t.ne[2] * t.ne[3]);
+// Column count of a contiguous activation given its logical row extent. Leaves receive head
+// views ([head_dim, heads, T]) and width x batch tensors ([rows, W, B]); the storage is the same
+// [rows, columns] matrix `ops::linear` wants.
+std::int32_t columns_for(const Tensor& t, std::int32_t rows) {
+    const std::int64_t numel = t.numel();
+    if (rows <= 0 || numel <= 0 || numel % rows != 0) {
+        throw std::invalid_argument("qwen3_5_9b leaf operand does not tile its row extent");
+    }
+    return static_cast<std::int32_t>(numel / rows);
 }
 
-// `ops::linear` takes strictly two-dimensional operands; leaves receive head views or
-// width x batch tensors, so re-view them over the same storage.
+// `ops::linear` takes strictly two-dimensional operands; re-view over the same storage.
 Tensor as_matrix(const Tensor& t, std::int32_t rows) {
     if (!t.is_contiguous() || t.data == nullptr) {
         throw std::invalid_argument("qwen3_5_9b leaf operand must be contiguous and non-null");
     }
-    return Tensor(t.data, t.dtype, {rows, columns_of(t)});
+    return Tensor(t.data, t.dtype, {rows, columns_for(t, rows)});
 }
 
 void linear_into(const Tensor& x, const Weight& w, Tensor& out, cudaStream_t stream) {
@@ -76,7 +81,7 @@ void linear_into(const Tensor& x, const Weight& w, Tensor& out, cudaStream_t str
 void linear_add_into(const Tensor& x, const Weight& w, Tensor& residual, WorkspaceArena& workspace,
                      cudaStream_t stream) {
     auto scope   = workspace.scope();
-    Tensor delta = workspace.alloc(DType::BF16, {w.n, columns_of(x)});
+    Tensor delta = workspace.alloc(DType::BF16, {w.n, columns_for(x, w.k)});
     linear_into(x, w, delta, stream);
     Tensor residual_matrix = as_matrix(residual, w.n);
     ops::residual_add(delta, residual_matrix, stream);
@@ -85,7 +90,7 @@ void linear_add_into(const Tensor& x, const Weight& w, Tensor& residual, Workspa
 void swiglu_mlp(const Tensor& hidden, const DensePostMixerPayload& weights, Tensor& residual,
                 WorkspaceArena& workspace, cudaStream_t stream) {
     auto scope     = workspace.scope();
-    const int cols = columns_of(hidden);
+    const int cols = columns_for(hidden, TextConfig::hidden);
     Tensor gate_up = workspace.alloc(DType::BF16, {TextConfig::mlp_gate_up_rows, cols});
     linear_into(hidden, weights.gate_up, gate_up, stream);
     Tensor activation = workspace.alloc(DType::BF16, {TextConfig::intermediate, cols});
@@ -251,7 +256,7 @@ void Variant::gdn_norm_control_projection(const Tensor& residual, const Tensor& 
                                           DeviceExecutionView execution) {
     const cudaStream_t stream = execution.stream;
     auto scope                = workspace.scope();
-    const int cols            = columns_of(residual);
+    const int cols            = columns_for(residual, TextConfig::hidden);
     // Pre-norm with the family's zero-centred (1+w) gain, then the two control projections and
     // the elementwise gate preparation.
     ops::rmsnorm(residual, norm_weight, eps, true, hidden, stream);
