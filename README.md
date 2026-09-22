@@ -7,7 +7,8 @@ single NVIDIA GeForce RTX 5090. It runs text, image, and video prompts through a
 OpenAI-/Anthropic-compatible HTTP APIs. The runtime is deliberately specialized: one GPU, one
 resident model, and a startup-fixed capacity of one to eight active requests.
 
-Five official artifacts are available. The quick-start commands use Qwen3.8-27B NVFP4.
+Five official artifacts are available, plus the two Qwen3.5-9B artifacts this branch converts
+locally (no upload; see the model card). The quick-start commands use Qwen3.8-27B NVFP4.
 
 | Model | Weights | Artifact | Download and model card |
 |---|---|---|---|
@@ -16,6 +17,8 @@ Five official artifacts are available. The quick-start commands use Qwen3.8-27B 
 | Qwen3.8-27B | `groupwise-int` | `qwen3_8_27b.ninfer` | [Qwen3.8-27B](https://huggingface.co/neroued/Qwen3.8-27B-NInfer) |
 | Qwen3.8-27B | `nvfp4` | `qwen3_8_27b_nvfp4.ninfer` | [Qwen3.8-27B NVFP4](https://huggingface.co/neroued/Qwen3.8-27B-nvfp4-NInfer) |
 | Qwen3.6-35B-A3B | `groupwise-int` | `qwen3_6_35b_a3b.ninfer` | [Qwen3.6-35B-A3B](https://huggingface.co/neroued/Qwen3.6-35B-A3B-NInfer) |
+| Qwen3.5-9B | `groupwise-int` | `qwen3_5_9b_v3.ninfer` | [Qwen3.5-9B](model-cards/Qwen3.5-9B-NInfer/README.md) (this branch: convert with `--recipe qwen3_5_9b`) |
+| Qwen3.5-9B | `nvfp4` | `qwen3_5_9b_nvfp4_v3.ninfer` | [Qwen3.5-9B NVFP4](model-cards/Qwen3.5-9B-NInfer/README.md#nvfp4-variant) (this branch: `--recipe qwen3_5_9b_nvfp4` + the W4A4 override) |
 
 Each v3 `.ninfer` artifact carries model configuration, encoded weights, logical bindings and
 frontend resources. Runtime execution uses those facts with the implemented model and Op
@@ -162,6 +165,8 @@ linked from each model below.
 | [Qwen3.6-27B](docs/performance/qwen3.6-27b.md#single-request-speculative-decode) `nvfp4` | 11,191.5 tok/s | 2,510.6 tok/s | 252.2 tok/s |
 | [Qwen3.8-27B](docs/performance/qwen3.8-27b.md#single-request-speculative-decode) `groupwise-int` | 3,274.7 tok/s | 1,609.7 tok/s | 224.4 tok/s |
 | [Qwen3.8-27B](docs/performance/qwen3.8-27b.md#single-request-speculative-decode) `nvfp4` | 8,340.4 tok/s | 2,203.1 tok/s | 219.8 tok/s |
+| [Qwen3.5-9B](docs/performance/qwen3.5-9b.md) `groupwise-int` | 10.7k tok/s (smoke) | — | 456.7 tok/s (pre-v3 corpus) |
+| [Qwen3.5-9B](docs/performance/qwen3.5-9b.md) `nvfp4` | 33.0k tok/s (7,881-token smoke) | 1,544.7 tok/s (A16-route campaign) | 580.8 tok/s |
 
 ## Evaluation
 
