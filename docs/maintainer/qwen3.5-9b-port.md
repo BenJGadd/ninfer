@@ -93,6 +93,7 @@ named the two registered geometries:
 | `src/ops/linear_attention/gated_delta_net/recurrent.cuh`, `recurrent.cu`, `replay.cpp` | `FoldGeometry24x32 = FoldGeometry<24, 16, 32, 8192>` + dispatch arm + registered-geometry predicate |
 | `src/ops/linear/{q4,q5,q6,w8}/*_dispatch.cpp` | one fallback block before the final throw: unregistered `(n, k)` with `k % 128 == 0` take the generic simt/mma routes |
 | `src/ops/kernel/gdn_gating.cuh`, `launcher/gdn_gating.cu`, `wrapper/gdn_gating.cpp` | head count becomes a runtime parameter (`A_log.ne[0]`) instead of the literal 48 |
+| `src/targets/qwen3_6/impl/frontend/chat_template.cpp` | the Qwen3.5 template digest (`a4aee8af…`) resolves to the native ThinkingToggle renderer; the 9B template is the 3.6 template minus its `preserve_thinking` branch, with scalar tool arguments rendered by `string` instead of `tojson`. Upstream master executes jinja directly, so this hunk is dropped on a rebase past it |
 
 To find these again after a rebase: `git log --oneline qwen3_5_9b ^<upstream> -- src/ops` lists the
 commits; each hunk is small and carries a "Qwen3.5-9B" comment.
@@ -174,7 +175,7 @@ cd ~/Projects/ninfer-repro && ./py-convert-venv.sh && . ./py-convert-env.sh
 # 2. converter unit tests (fixtures are the pinned config.json + weight map)
 cd ninfer && "$PY" -m pytest tests/convert/qwen3_5_9b
 
-# 3. engine build
+# 3. engine build (fresh build-9b/ tree: the old build/ cache names the pre-move source path)
 cd ~/Projects/ninfer-repro
 systemd-run --user --scope -p MemoryMax=22G -- nix-shell --impure shell.nix --run ./build-9b.sh
 
@@ -185,17 +186,48 @@ cd ninfer && "$PY" -m tools.convert.qwen3_5_9b.convert \
 # 5. verify structure + representative payloads against the source shards
 "$PY" -m tools.convert.qwen3_5_9b.verify ../out/qwen3_5_9b.ninfer --model ../models-src/Qwen3.5-9B
 
-# 6. smoke serve (never port 8001: that is the desktop 35B server)
-LD_LIBRARY_PATH=/run/opengl-driver/lib ./build/apps/ninfer-serve ../out/qwen3_5_9b.ninfer \
-  --host 127.0.0.1 --port 8090 --model-id qwen3.5-9b --max-context 32768 --kv-capacity auto \
-  --kv-dtype int8 --spec mtp --draft-tokens 3 --lm-head-draft
+# 6. smoke serve (never port 8001: that is the desktop 35B server). Stop it with
+#    `pkill -x ninfer-serve`; a `pkill -f` pattern that appears in your own command line kills
+#    your shell first.
+cd ~/Projects/ninfer-repro && ./serve-9b.sh          # build-9b/apps/ninfer-serve on 127.0.0.1:8090
+curl -s http://127.0.0.1:8090/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"qwen3.5-9b","messages":[{"role":"user","content":"Capital of France?"}],"enable_thinking":false}'
 
-# 7. benchmark (methodology: docs/performance/methodology.md)
-"$PY" tools/bench/run_serve_corpus.py --artifact qwen3_5_9b=../out/qwen3_5_9b.ninfer \
-  --mode mtp0 --mode mtp3 --port 8090 --output ../ninfer-run-logs/bench-9b
+# 7. benchmark (methodology: docs/performance/methodology.md); its server uses port 8091
+./bench-9b.sh
 ```
 
 ## 7. Re-applying on a newer NInfer
+
+### 7.0 Upstream master after 2026-09-14 is a different architecture
+
+Surveyed 2026-09-21 (`origin/master` 50 commits past `a16b6442`): upstream deleted
+`src/targets/*`, `src/targets/registry.h` and the per-target `Variant`/bindings, and replaced them
+with one generic `src/models/qwen3_5/` whose geometry is read from a **v3 artifact** at load time
+(`src/models/qwen3_5/config.cpp` parses `hidden_size`, attention and GDN head counts;
+`src/models/registry.cpp` selects by architecture string only). The converter became generic too
+(`tools/convert/qwen3_5.py`, `official_recipes.py::_dense_groupwise`), and
+`tools/upgrade_ninfer_v2_to_v3.py` upgrades official v2 files.
+
+Consequences for this branch:
+
+- **Do not rebase it onto master.** Sections 3.1–3.2's C++ half has nothing to re-apply against;
+  only the converter ideas and the ops admissions carry over.
+- **Port again on master as a smaller job** (`qwen3_5_9b-v3`):
+  1. converter: an official recipe entry for `Qwen/Qwen3.5-9B` reusing `_dense_groupwise`, plus
+     the pinned `generation_config.json` and the F32→BF16 norm cast;
+  2. the ops-layer admissions of Section 3.2 (attention 16/4, RoPE, fold 24×32, gating heads):
+     those gates are unchanged on master;
+  3. shape entries in the fused-op catalogs (`attn_input_proj`, `gdn_input_proj`, `linear_swiglu`,
+     `linear_add`, and the rewritten per-shape `linear` tables): master's execution layer calls the
+     fused Ops directly, so composition leaves are not an option there. Master's
+     `docs/maintainer/linear-tuning.md` documents adding and tuning entries; that path also yields
+     tuned speeds instead of this branch's composition baseline.
+- The chat-template digest registration (Section 3.2) is replaced on master by
+  `src/models/qwen3_5/frontend/digest.cpp`; check whether the Qwen3.5 template digest is admitted
+  there.
+
+The rest of this section describes re-applying within the pre-2026-09-14 architecture.
 
 1. `git rebase <new-upstream>` the `qwen3_5_9b` branch. Conflicts can only appear in the
    Section 3.2 files; resolve each by re-adding the 9B line next to whatever the upstream now
