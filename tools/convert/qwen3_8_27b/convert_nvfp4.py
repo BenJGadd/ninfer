@@ -49,10 +49,70 @@ RECIPE_ID = "qwen3_8_27b_nvfp4-v2"
 _FP8_TARGETS = [
     r"re:.*self_attn\.(q|k|v|o)_proj$",
     r"re:.*linear_attn\.(in_proj_qkv|in_proj_z|out_proj)$",
-    r"re:.*lm_head",
     r"re:.*layers\.(56|57|58|59|60|61|62|63)\.mlp\.(gate|up|down)_proj$",
 ]
 _NVFP4_TARGETS = [r"re:.*mlp\.(gate|up|down)_proj$"]
+
+_FULL_ATTENTION_LAYERS = frozenset(range(3, 64, 4))
+
+
+def _expected_target_modules() -> tuple[frozenset[str], frozenset[str]]:
+    """Module names the registered FP8 and NVFP4 target sets select."""
+
+    fp8: set[str] = set()
+    nvfp4: set[str] = set()
+    for layer in range(64):
+        prefix = f"model.language_model.layers.{layer}."
+        if layer in _FULL_ATTENTION_LAYERS:
+            for name in ("q", "k", "v", "o"):
+                fp8.add(f"{prefix}self_attn.{name}_proj")
+        else:
+            for name in ("in_proj_qkv", "in_proj_z", "out_proj"):
+                fp8.add(f"{prefix}linear_attn.{name}")
+        for name in ("gate", "up", "down"):
+            module = f"{prefix}mlp.{name}_proj"
+            if layer >= 56:
+                fp8.add(module)
+            else:
+                nvfp4.add(module)
+    return frozenset(fp8), frozenset(nvfp4)
+
+
+_EXPECTED_FP8_MODULES, _EXPECTED_NVFP4_MODULES = _expected_target_modules()
+
+
+def _check_targets(
+    label: str,
+    targets: object,
+    patterns: Sequence[str],
+    modules: frozenset[str],
+) -> None:
+    """Accept the registered pattern list or an equivalent explicit module list.
+
+    Published compressed-tensors checkpoints record either the `re:` pattern
+    forms this converter declares or the fully expanded module names those
+    patterns select. Both describe the same closed target set, so compare the
+    selected modules rather than the spelling.
+    """
+
+    if not isinstance(targets, Sequence) or isinstance(targets, (str, bytes)):
+        raise ValueError(f"{label}.targets must be a list")
+    listed = list(targets)
+    if listed == list(patterns):
+        return
+    if any(item.startswith("re:") for item in listed):
+        raise ValueError(
+            f"{label}.targets: expected {list(patterns)!r}, got {listed!r}"
+        )
+    if len(listed) != len(set(listed)):
+        raise ValueError(f"{label}.targets lists a module more than once")
+    if frozenset(listed) != modules:
+        missing = sorted(modules.difference(listed))
+        extra = sorted(frozenset(listed).difference(modules))
+        raise ValueError(
+            f"{label}.targets does not select the registered module set: "
+            f"missing {missing[:4]!r}, unexpected {extra[:4]!r}"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,7 +164,13 @@ def _validate_float_group(group: Mapping[str, object]) -> None:
     family_conversion.check_members(
         "quantization_config.config_groups.group_0",
         group,
-        {"format": "float-quantized", "targets": _FP8_TARGETS},
+        {"format": "float-quantized"},
+    )
+    _check_targets(
+        "quantization_config.config_groups.group_0",
+        group.get("targets"),
+        _FP8_TARGETS,
+        _EXPECTED_FP8_MODULES,
     )
     weights = group.get("weights")
     activations = group.get("input_activations")
@@ -133,7 +199,13 @@ def _validate_nvfp4_group(group: Mapping[str, object]) -> None:
     family_conversion.check_members(
         "quantization_config.config_groups.group_1",
         group,
-        {"format": "nvfp4-pack-quantized", "targets": _NVFP4_TARGETS},
+        {"format": "nvfp4-pack-quantized"},
+    )
+    _check_targets(
+        "quantization_config.config_groups.group_1",
+        group.get("targets"),
+        _NVFP4_TARGETS,
+        _EXPECTED_NVFP4_MODULES,
     )
     weights = group.get("weights")
     activations = group.get("input_activations")
@@ -435,6 +507,12 @@ def convert(
                     payload = fp8_embedding.iter_reader_payload(
                         official_reader,
                         recipe.OFFICIAL_EMBEDDING_SOURCE.name,
+                        spec.shape,
+                    )
+                elif spec.name == "text/output_head":
+                    payload = fp8_embedding.iter_reader_payload(
+                        official_reader,
+                        recipe.OFFICIAL_OUTPUT_HEAD_SOURCE.name,
                         spec.shape,
                     )
                 elif spec.name in recipe.FP8_WEIGHTS_BY_NAME:

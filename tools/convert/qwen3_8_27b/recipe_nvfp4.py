@@ -206,12 +206,6 @@ def _build_quantized_matrix_recipes() -> tuple[
                 )
             )
 
-    output_head = _source("lm_head", 248320, 5120)
-    fp8_weights.append(
-        Fp8WeightRecipe(
-            "text/output_head", output_head.shape, (_all(output_head),)
-        )
-    )
     return (
         tuple(fp8_weights),
         tuple(nvfp4_weights),
@@ -368,6 +362,7 @@ OFFICIAL_TENSOR_SPECS = tuple(
     spec
     for spec in inventory.BASE_TENSOR_SPECS
     if spec.name == "text/token_embedding"
+    or spec.name == "text/output_head"
     or spec.name.startswith("text/draft_head")
     or spec.name.startswith("mtp/")
     or spec.name.startswith("vision/")
@@ -385,6 +380,15 @@ _embedding_expression = OFFICIAL_RECIPES_BY_NAME[
 if not isinstance(_embedding_expression, family_recipe.SourceTensor):
     raise ValueError("token embedding must map to one direct official source")
 OFFICIAL_EMBEDDING_SOURCE = _embedding_expression
+
+# The registered NVFP4 profile leaves lm_head unquantized in some published
+# compressed-tensors checkpoints, so the output head is encoded locally from the
+# official BF16 matrix using the same row-scaled FP8 encoder as the token
+# embedding rather than copied from the quantized source.
+_output_head_expression = OFFICIAL_RECIPES_BY_NAME["text/output_head"].expression
+if not isinstance(_output_head_expression, family_recipe.SourceTensor):
+    raise ValueError("output head must map to one direct official source")
+OFFICIAL_OUTPUT_HEAD_SOURCE = _output_head_expression
 
 
 def _validate_matrix_recipe(
@@ -407,12 +411,14 @@ def validate_recipe() -> None:
         OFFICIAL_RECIPES, OFFICIAL_TENSOR_SPECS
     )
     ownership = (
-        {"text/token_embedding"},
+        {"text/token_embedding", "text/output_head"},
         set(FP8_WEIGHTS_BY_NAME),
         set(NVFP4_WEIGHTS_BY_NAME),
         set(INPUT_DIVISORS_BY_NAME),
         set(QUANTIZED_DIRECT_BY_NAME),
-        set(OFFICIAL_RECIPES_BY_NAME).difference({"text/token_embedding"}),
+        set(OFFICIAL_RECIPES_BY_NAME).difference(
+            {"text/token_embedding", "text/output_head"}
+        ),
     )
     all_names: set[str] = set()
     for names in ownership:
@@ -424,7 +430,7 @@ def validate_recipe() -> None:
     if tuple(FP8_WEIGHTS_BY_NAME) != tuple(
         spec.name
         for spec in inventory.FP8_TENSOR_SPECS
-        if spec.name != "text/token_embedding"
+        if spec.name not in ("text/token_embedding", "text/output_head")
     ):
         raise ValueError("FP8 recipe order does not match inventory")
     if tuple(NVFP4_WEIGHTS_BY_NAME) != tuple(
@@ -740,6 +746,7 @@ __all__ = [
     "NVFP4_WEIGHT_RECIPES",
     "NVFP4_WEIGHTS_BY_NAME",
     "OFFICIAL_EMBEDDING_SOURCE",
+    "OFFICIAL_OUTPUT_HEAD_SOURCE",
     "OFFICIAL_RECIPES",
     "OFFICIAL_RECIPES_BY_NAME",
     "OFFICIAL_TENSOR_SPECS",
