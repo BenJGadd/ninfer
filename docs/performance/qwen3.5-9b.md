@@ -62,6 +62,14 @@ Run [B3](#b3), MTP3.
 Not published: the serial runner reports per-request phases only (the same scope as the
 27B's G3 run).
 
+## Perplexity
+
+Quality check, not a serving metric ([method](../perplexity.md)): `ninfer-perplexity --quick
+--kv-dtype int8`, context 4096 / stride 2048, corpus `ninfer-ppl-1m-v1`, 2026-09-21, score rate
+5,037 tok/s. Overall **5.07** (chinese_reference 5.48, english_long_form 7.61,
+english_reference 7.84, ninfer_code 2.01; 261,167 scored tokens). Report:
+`profiles/perplexity/qwen3.5-9b/groupwise-int/int8-g64/ninfer-ppl-1m-v1/quick/20260922-054010/report.json`.
+
 ## Comparisons and limitations
 
 - No published Qwen3.5-9B numbers exist upstream; the only comparison is against the 27B/35B

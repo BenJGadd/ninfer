@@ -1,0 +1,69 @@
+{
+  "schema": "ninfer.artifact-manifest",
+  "schema_version": 1,
+  "artifact": {
+    "filename": "qwen3_5_9b.ninfer",
+    "bytes": 6558480640,
+    "sha256": "3a471aa18d59d0760db30e9ad7fcf339580deb55665cb47b8be362627133139c",
+    "container_version": 2,
+    "model_id": "qwen3.5-9b",
+    "weights_id": "groupwise-int",
+    "target_key": "qwen3_5_9b"
+  },
+  "source": {
+    "base": {
+      "repo_id": "Qwen/Qwen3.5-9B",
+      "revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+      "license": "Apache-2.0"
+    },
+    "generation_config": "tools/convert/qwen3_5_9b/generation_config.json (repository-pinned; upstream ships none)",
+    "frontend_sha256": {
+      "frontend/tokenizer.json": "5f9e4d4901a92b997e463c1f46055088b6cca5ca61a6522d1b9f64c4bb81cb42",
+      "frontend/tokenizer_config.json": "316230d6a809701f4db5ea8f8fc862bc3a6f3229c937c174e674ff3ca0a64ac8",
+      "frontend/chat_template.jinja": "a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715",
+      "frontend/generation_config.json": "98cc62c0ad60faa4067de78f12b909e65e4dc093d099f406ac5bb163ad95a2f4",
+      "frontend/preprocessor_config.json": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516",
+      "frontend/video_preprocessor_config.json": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13"
+    }
+  },
+  "conversion": {
+    "recipe_id": "qwen3_5_9b-v1",
+    "converter_repository": "local branch qwen3_5_9b of https://github.com/Neroued/ninfer",
+    "converter_revision": "9badf959f1ff285d93741aa1d34f0019294e9bd4",
+    "ranking_input": {
+      "path": "tools/freq_corpus/fixtures/ranking/ranking.train.counts.i64",
+      "sha256": "c692dc76388132c910547589b4fb4a0503fbd6ad50aaac6a509bbcb192a8afa5"
+    }
+  },
+  "runtime": {
+    "repository": "local branch qwen3_5_9b of https://github.com/Neroued/ninfer",
+    "minimum_revision": "9badf959f1ff285d93741aa1d34f0019294e9bd4",
+    "cuda_architecture": "sm_120a"
+  },
+  "inventory": {
+    "count": 716,
+    "tensors": 710,
+    "resources": 6,
+    "formats": {
+      "BF16": 358,
+      "FP32": 48,
+      "I32": 1,
+      "Q4G64_F16S": 95,
+      "Q5G64_F16S": 174,
+      "Q6G64_F16S": 3,
+      "W8G32_F16S": 31
+    },
+    "layouts": {
+      "contiguous-le-v1": 407,
+      "row-split-k128-v1": 303
+    },
+    "encodings": {
+      "raw-bytes-v1": 6
+    },
+    "tensor_bytes": 6545522592,
+    "resource_bytes": 12833468,
+    "object_bytes": 6558356060,
+    "payload_span_bytes": 6558370048,
+    "alignment_bytes": 13988
+  }
+}

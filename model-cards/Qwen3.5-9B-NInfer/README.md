@@ -27,20 +27,20 @@ distribution, or GGUF file.
 | Field | Value |
 |---|---|
 | Filename | `qwen3_5_9b.ninfer` |
-| Size | @ARTIFACT_BYTES@ bytes (@ARTIFACT_GIB@ GiB) |
-| SHA-256 | `@ARTIFACT_SHA256@` |
+| Size | 6,558,480,640 bytes (6.11 GiB) |
+| SHA-256 | `3a471aa18d59d0760db30e9ad7fcf339580deb55665cb47b8be362627133139c` |
 | Container version | 2 |
 | NInfer model ID | `qwen3.5-9b` |
 | NInfer weights ID | `groupwise-int` |
 | NInfer target key | `qwen3_5_9b` |
 
 The file contains the registered Text, Vision, MTP, proposal-head, tokenizer, chat-template,
-generation, and media-processor objects required by NInfer (740 objects: 734 tensors, 6
+generation, and media-processor objects required by NInfer (716 objects: 710 tensors, 6
 resources). `generation_config.json` is a repository-pinned file because the upstream
 checkpoint ships none.
 
 ```bash
-printf '%s  %s\n' '@ARTIFACT_SHA256@' 'qwen3_5_9b.ninfer' | sha256sum --check
+printf '%s  %s\n' '3a471aa18d59d0760db30e9ad7fcf339580deb55665cb47b8be362627133139c' 'qwen3_5_9b.ninfer' | sha256sum --check
 ```
 
 ## Requirements
@@ -67,7 +67,20 @@ no companion draft model exists.
 | Base repository | `Qwen/Qwen3.5-9B` |
 | Revision | `c202236235762e1c871ad0ccb60c8ee5ba337b9a` |
 | Recipe id | `qwen3_5_9b-v1` |
-| Converter revision | @CONVERTER_REVISION@ |
+| Converter revision | `9badf959` (branch `qwen3_5_9b`) |
+
+## Evaluation
+
+Causal perplexity (`ninfer-perplexity --quick --kv-dtype int8`, context 4096 / stride 2048,
+corpus `ninfer-ppl-1m-v1`, 261,167 scored tokens, 2026-09-21):
+
+| Domain | Tokens | Perplexity |
+|---|---:|---:|
+| chinese_reference | 65,510 | 5.48 |
+| english_long_form | 65,455 | 7.61 |
+| english_reference | 65,304 | 7.84 |
+| ninfer_code | 64,898 | 2.01 |
+| **overall** | 261,167 | **5.07** |
 
 ## Performance
 
