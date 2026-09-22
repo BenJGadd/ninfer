@@ -22,9 +22,26 @@ using LinearParameters = ops::SingleProjectionWeight;
     return static_cast<std::int32_t>(value);
 }
 
+// Composed routes for geometries the fused catalogs do not register (execution/composed.h).
+// Present only when the block runs composed; the fused parameter fields are still filled so
+// prefetch hints and the planner see the same weights either way.
+struct ComposedAttentionProjection {
+    LinearParameters query, key, gate, value;
+};
+
+struct ComposedGdnProjection {
+    LinearParameters query_key_value; // one contiguous query|key|value parent
+    LinearParameters z;
+};
+
+struct ComposedGdnControl {
+    LinearParameters a, b;
+};
+
 struct DenseParameters {
     LinearParameters gate_up;
     LinearParameters down;
+    bool composed = false; // plain linear + silu_mul + linear + residual_add
 };
 
 using FfnParameters = std::variant<DenseParameters, ops::SparseMoeWeights>;
@@ -33,6 +50,8 @@ struct AttentionParameters {
     ops::ProjectionWeights projection;
     Tensor query_norm, key_norm;
     LinearParameters output;
+    std::optional<ComposedAttentionProjection> composed;
+    bool output_composed = false;
 };
 
 struct GdnParameters {
@@ -40,6 +59,9 @@ struct GdnParameters {
     ops::ProjectionWeights control;
     Tensor a_log, dt_bias, convolution, norm;
     LinearParameters output;
+    std::optional<ComposedGdnProjection> composed;
+    std::optional<ComposedGdnControl> composed_control;
+    bool output_composed = false;
 };
 
 struct BlockParameters {

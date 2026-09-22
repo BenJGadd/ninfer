@@ -90,6 +90,30 @@ def qwen3_8_27b(model, recipe, sources):
     _dense_groupwise(model, recipe, Q8)
 
 
+def qwen3_5_9b(model, recipe, sources):
+    """Qwen3.5-9B: the Dense groupwise recipe with two storage choices for the composed engine
+    route (src/models/qwen3_5/execution/composed.h). No fused catalog registers this width, so
+    GDN query|key|value is stored as one contiguous parent for a single `linear`, and the tiny
+    control projections are Q8 rather than BF16 because the BF16 linear catalog has no generic
+    route. Qwen/Qwen3.5-9B ships no generation_config.json; pass
+    `--resource generation_config.json=tools/frontend_resources/qwen3_5_9b/generation_config.json`.
+    """
+    if "num_experts" in model.config:
+        raise ValueError("this official recipe requires Qwen3.5 Dense mathematics")
+    _dense_groupwise(model, recipe, Q6)
+    for layer, kind in enumerate(model.config["layer_types"]):
+        if kind != "linear_attention":
+            continue
+        prefix = f"text/layers/{layer}/gdn/"
+        # One parent needs one format: query/key move from Q4 to the value's Q5.
+        for role in ("query", "key"):
+            _assign(recipe, prefix + role, Q5)
+        recipe.group([prefix + role for role in ("query", "key", "value")])
+        for role in ("a_projection", "b_projection"):
+            recipe.separate_parameters.discard(prefix + role)
+            _assign(recipe, prefix + role, Q8)
+
+
 def qwen3_6_35b_a3b(model, recipe, sources):
     if "num_experts" not in model.config:
         raise ValueError("this official recipe requires Qwen3.5 MoE mathematics")
@@ -178,6 +202,7 @@ RECIPES = {
     "qwen3_6_27b": qwen3_6_27b,
     "qwen3_6_27b_nvfp4": qwen3_6_27b_nvfp4,
     "qwen3_8_27b": qwen3_8_27b,
+    "qwen3_5_9b": qwen3_5_9b,
     "qwen3_8_27b_nvfp4": qwen3_8_27b_nvfp4,
     "qwen3_6_35b_a3b": qwen3_6_35b_a3b,
 }
