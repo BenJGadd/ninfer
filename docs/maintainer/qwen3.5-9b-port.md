@@ -101,3 +101,20 @@ Rebase `qwen3_5_9b-v3`. Conflicts can only land in the Section 2.2 files; each h
 lines with a "Qwen3.5-9B" comment. If upstream registers 9B shapes in a fused catalog, the
 `registered_*` predicates start returning true and the composed code becomes dead for that leaf
 without edits. If upstream generalises the linear tables, drop the fallback blocks.
+
+## 7. The other local artifacts on v3
+
+Upstream's `tools/upgrade_ninfer_v2_to_v3.py` converted the four other deployed v2 files on
+2026-09-22 (weights preserved, maintained templates installed), each verified by loading on this
+branch's engine with its deployed flags and answering one request:
+
+| v2 file | v3 name | identity | objects |
+|---|---|---|---:|
+| `qwen3_6_35b_a3b.ninfer` | `qwen3_6_35b_a3b.v3.ninfer` | `qwen3.6-35b-a3b` + dflash | 940 |
+| `qwen3_6_35b_a3b_uncensored.ninfer` | `qwen3_6_35b_a3b_uncensored.v3.ninfer` | `qwen3.6-35b-a3b` + dflash | 940 |
+| `qwen3_8_27b_nvfp4.ninfer` | `qwen3_8_27b_nvfp4.v3.ninfer` | `qwen3.8-27b` + dflash2 | 1190 |
+| `qwen3_8_27b_nvfp4_uncensored.ninfer` | `qwen3_8_27b_nvfp4_uncensored.v3.ninfer` | `qwen3.8-27b` + dflash2 | 1190 |
+
+The 9B was reconverted from source with the `qwen3_5_9b` recipe rather than upgraded. The
+`qwen3_8_27b_thinkingcap_nvfp4_w8g32` variant (`weights_id nvfp4_w8g32`, 1307 objects) is outside
+the tool's table and was retired instead of ported.
