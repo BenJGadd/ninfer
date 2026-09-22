@@ -118,3 +118,52 @@ branch's engine with its deployed flags and answering one request:
 The 9B was reconverted from source with the `qwen3_5_9b` recipe rather than upgraded. The
 `qwen3_8_27b_thinkingcap_nvfp4_w8g32` variant (`weights_id nvfp4_w8g32`, 1307 objects) is outside
 the tool's table and was retired instead of ported.
+
+## 8. Weight-only NVFP4 (`qwen3_5_9b_nvfp4`)
+
+Qwen publishes no NVFP4 checkpoint for this size, and upstream's `import_encoded` only copies
+pre-encoded words, so the artifact is quantized in-repo from the BF16 checkpoint.
+
+**Method** `nvfp4_blockwise` (`tools/convert/methods.py`), the inverse of the decode contract
+in `docs/maintainer/tensor-formats.md` §3.3, `W = e2m1(c) · e4m3fn(s) / d_w`:
+
+- pass one: matrix max-abs `A` over every input row of the parent;
+- `d_w = 448 · 6 / A`, so the largest block scale lands exactly on the E4M3FN maximum;
+- per 16-wide block: `s = e4m3fn_rne(clamp(amax_block · d_w / 6, 0, 448))`, then
+  `c = e2m1_rne(clamp(w · d_w / s, −6, 6))` with ties to the even code; an all-zero block
+  stores scale word 0 and zero codes;
+- weight-only: no activation divisor is produced, every site keeps `A16Only`.
+
+A synthetic round trip (`quantize_nvfp4_matrix` → `encode_nvfp4` → `decode_nvfp4_words`)
+returns the identical words, and the E2M1 tie cases 0.25/0.75/1.25/1.75/2.5/3.5/5.0 round to
+codes 0/2/2/4/4/6/6.
+
+**Recipe** (`tools/convert/official_recipes.py`): every `text/layers/*` projection except
+`gdn/{a,b}_projection` is NVFP4; a/b stay Q8, endpoints Q6, vision and MTP as in
+`qwen3_5_9b`. A non-standard method is never auto-packed (recipe.py `standard`), which is what
+the composed route wants for attention — query/key/gate/value are four whole NVFP4 parents,
+because NVFP4 row views are rejected (`weight_view.cpp` "requires a complete FP8/NVFP4
+parent") — while GDN query|key|value and MLP gate|up are grouped explicitly so `single()` sees
+one contiguous parent.
+
+**Engine** — the NVFP4 linear catalog is per-shape (`Nvfp4Geometry<N,K>` at compile time), so
+five shape files were added under `src/ops/linear/nvfp4/shapes/`, registered in
+`nvfp4_shapes.h`, `nvfp4_dispatch.cpp` (`kShapes`) and `sources.cmake`:
+
+| shape | sites |
+|---|---|
+| `n4096_k4096` | attention query, gate, output; GDN z, output |
+| `n1024_k4096` | attention key, value |
+| `n8192_k4096` | GDN query\|key\|value |
+| `n24576_k4096` | MLP gate\|up |
+| `n4096_k12288` | MLP down |
+
+Each carries the A16 routes of `n5120_k6144.cu` unchanged (the schedules need only
+`K % 512 == 0`); the A4 slot is `reject_a4` and `uses_a4` is false. Re-apply: five new files plus
+three one-line-per-shape registrations.
+
+**Reproduction**: `~/Projects/ninfer-repro/convert-9b-nvfp4.sh` (env `MODEL_SRC`, `OUT`,
+`NAME` for a same-shape fine-tune), `serve-nvfp4.sh`, `perplexity-nvfp4.sh`.
+
+**Result**: see `docs/performance/qwen3.5-9b.md` for the NVFP4 numbers against the Q6/Q5
+artifact.
