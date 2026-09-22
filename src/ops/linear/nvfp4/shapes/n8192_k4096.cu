@@ -1,8 +1,6 @@
 #include "ops/linear/nvfp4/nvfp4_shapes.h"
 #include "ops/linear/nvfp4/nvfp4_launch.cuh"
 
-#include <stdexcept>
-
 namespace ninfer::ops::detail {
 namespace {
 using Geometry = Nvfp4Geometry<8192, 4096>;
@@ -36,6 +34,12 @@ using C32       = Nvfp4SimtSchedule<4, 1, 2, 16, 8, 1, Nvfp4SimtActivationAccess
 using FullChunk = Nvfp4SimtSchedule<4, 1, 2, 16, 32, 1, Nvfp4SimtActivationAccess::TokenPacked,
                                     Nvfp4ScaleAccess::Direct, Nvfp4CodeCache::Default, 1,
                                     Nvfp4SimtBlockOrder::RowsContiguous, 1>;
+using T32R64    = Nvfp4W4a4MmaSchedule<32, 64, 256, 2, 4, 2, 2>;
+using T32R128   = Nvfp4W4a4MmaSchedule<32, 128, 256, 2, 4, 2, 1>;
+using T64R128   = Nvfp4W4a4MmaSchedule<64, 128, 256, 4, 2, 2, 1>;
+using T128R128Pipelined = Nvfp4W4a4MmaSchedule<128, 128, 256, 4, 2, 2, 1>;
+using T128R128Resident  = Nvfp4W4a4MmaSchedule<128, 128, 256, 4, 2, 1, 2>;
+
 Nvfp4Launch select_a16(std::int32_t tokens) {
     if (tokens == 1) return launch_nvfp4_gemv<Geometry, Gemv>;
     if (tokens == 32) return launch_nvfp4_simt<Geometry, 32, FullChunk, true>;
@@ -51,16 +55,22 @@ Nvfp4Launch select_a16(std::int32_t tokens) {
     throw std::logic_error("nvfp4 A16 chunk exceeds shape capacity");
 }
 
-// Qwen3.5-9B shape (see docs/maintainer/qwen3.5-9b-port.md §8). Only the A16 routes are
-// registered: the official recipe is weight-only, every site is A16Only, and no activation
-// divisor exists to feed the W4A4 kernels, so the A4 slot rejects rather than guesses.
-void reject_a4(const Tensor&, const Weight&, Tensor&, Nvfp4W4a4Workspace, cudaStream_t) {
-    throw std::logic_error("nvfp4 8192x4096: A4 route is not registered (weight-only shape)");
+// Qwen3.5-9B shape (docs/maintainer/qwen3.5-9b-port.md §8). A16 routes are n5120_k6144's;
+// the A4 routes reuse its MMA schedules for every token count, because the TMA route keys on
+// Nvfp4GeometryId, whose table this shape is not in. A4 is reached only when the artifact
+// grants AllowA4 with a calibrated activation divisor (§8.1).
+Nvfp4A4Route select_a4(std::int32_t tokens) {
+    if (tokens <= 64) return nvfp4_a4_mma_route<Geometry, T32R64>();
+    if (tokens <= 128) return nvfp4_a4_mma_route<Geometry, T32R128>();
+    if (tokens <= 192) return nvfp4_a4_mma_route<Geometry, T64R128>();
+    if (tokens <= 384) return nvfp4_a4_mma_route<Geometry, T128R128Resident>();
+    if (tokens <= 512) return nvfp4_a4_mma_route<Geometry, T128R128Pipelined>();
+    return nvfp4_a4_mma_route<Geometry, T128R128Resident>();
 }
 
-bool uses_a4(std::int32_t, std::int32_t) { return false; }
+bool uses_a4(std::int32_t, std::int32_t max_tokens) { return max_tokens >= 8; }
 } // namespace
 
-const Nvfp4LinearShape kNvfp4N8192K4096{8192, 4096, launch_nvfp4_a16_chunks<32, select_a16>, reject_a4,
-                                        uses_a4};
+const Nvfp4LinearShape kNvfp4N8192K4096{8192, 4096, launch_nvfp4_a16_chunks<32, select_a16>,
+                                        launch_nvfp4_a4<select_a4>, uses_a4};
 } // namespace ninfer::ops::detail
