@@ -20,3 +20,20 @@ shortlisted proposal head, 32,768-token context.
 
 Greedy outputs of the first two requests are byte-identical to the pre-v3 engine's. Perplexity
 (quick, int8 KV) is 5.073971 overall on both engines.
+
+## Weight-only NVFP4 artifact (`qwen3_5_9b_nvfp4`, 2026-09-22)
+
+Same engine revision, artifact SHA-256 `c6ec1107dec5605484d4393872315e8fd3a6964098d13beab0de10e482a6871f`
+(6,334,245,120 bytes, 732 objects, 176 NVFP4 projections), `--kv-dtype int8`, MTP3, 32,768-token
+context. Smoke requests only, no corpus campaign yet:
+
+| Request | Prompt tokens | Output tokens | Prefill (tok/s) | Decode (tok/s) |
+|---|---:|---:|---:|---:|
+| "Reply with exactly: nvfp4 ok" | 20 | 5 | 924.3 | 691.5 |
+| capital of Australia | 24 | 8 | 1,060 | 605.3 |
+| iterative Fibonacci function | 26 | 160 | 947.5 | 631.9 |
+
+Quick perplexity (int8 KV, corpus `ninfer-ppl-1m-v1`, 261,167 scored tokens): overall **5.201481**
+(chinese_reference 5.464, english_long_form 7.627, english_reference 8.622,
+ninfer_code 2.023) against 5.073971 for the Q4/Q5 artifact — a 2.5% perplexity cost for
+weight-only NVFP4 with in-repo block quantization and no calibration.

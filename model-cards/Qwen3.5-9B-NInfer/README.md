@@ -54,3 +54,12 @@ identical to six decimals with the pre-v3 engine's result for the same weights.
 ## Performance
 
 See `docs/performance/qwen3.5-9b.md`.
+
+## NVFP4 variant
+
+`qwen3_5_9b_nvfp4_v3.ninfer` — recipe `qwen3_5_9b_nvfp4`, weight-only NVFP4 quantized in-repo
+from the BF16 checkpoint (`nvfp4_blockwise`; port guide §8). 6,334,245,120 bytes, SHA-256
+`c6ec1107dec5605484d4393872315e8fd3a6964098d13beab0de10e482a6871f`, 732 objects (176 NVFP4
+projections; a/b Q8, endpoints Q6, vision and MTP unchanged). Served with the same flags and
+`--model-id qwen3.5-9b-nvfp4`. Quick perplexity 5.20 against 5.07 for the artifact above;
+decode ~630 tok/s against ~450 on the same smoke prompts.
