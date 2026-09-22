@@ -57,9 +57,21 @@ See `docs/performance/qwen3.5-9b.md`.
 
 ## NVFP4 variant
 
-`qwen3_5_9b_nvfp4_v3.ninfer` — recipe `qwen3_5_9b_nvfp4`, weight-only NVFP4 quantized in-repo
-from the BF16 checkpoint (`nvfp4_blockwise`; port guide §8). 6,334,245,120 bytes, SHA-256
-`c6ec1107dec5605484d4393872315e8fd3a6964098d13beab0de10e482a6871f`, 732 objects (176 NVFP4
-projections; a/b Q8, endpoints Q6, vision and MTP unchanged). Served with the same flags and
-`--model-id qwen3.5-9b-nvfp4`. Quick perplexity 5.20 against 5.07 for the artifact above;
-decode ~630 tok/s against ~450 on the same smoke prompts.
+`qwen3_5_9b_nvfp4_v3.ninfer` — recipe `qwen3_5_9b_nvfp4` + override
+`qwen3_5_9b_nvfp4_a4.py`: NVFP4 quantized in-repo from the BF16 checkpoint (`nvfp4_blockwise`)
+with calibrated W4A4 activation divisors (port guide §8-8.1). 6,334,363,652 bytes, SHA-256
+`741218f9d2d60b390a85c822192352eb10731b1907678c7bee3746bdbb968ebb`, 988 objects (176 NVFP4
+projections + 256 divisors; a/b Q8, endpoints Q6, vision and MTP unchanged). Served with the
+same flags and `--model-id qwen3.5-9b-nvfp4`. Quick perplexity 5.30 against 5.07 for the
+artifact above; prefill 33k tok/s against ~10.7k, decode ~610 tok/s against ~450 on the same
+smoke prompts.
+
+## Defiant Fable variant (uncensored fine-tune)
+
+`qwen3_5_9b_defiant_nvfp4_v3.ninfer` — the same recipe, override and engine route applied to
+`DavidAU/Qwen3.5-9B-The-Defiant-Fable-Uncensored-Heretic-NEO-IMATRIX-MAX-MTP` (16-bit
+safetensors, revision 7af0a9c4) with its own calibration; official tokenizer files (port guide
+§8.3). 6,334,363,652 bytes, SHA-256
+`b34925fb692599dfa82b71a351422b06bc160fa03d76722988475da563bd72f4`. `--model-id
+qwen3.5-9b-defiant-nvfp4`. Quick perplexity 5.01. Not scored for capability or refusal
+behaviour: treat it as unmeasured beyond loading, answering and perplexity.

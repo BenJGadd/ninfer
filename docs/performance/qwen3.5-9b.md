@@ -59,3 +59,23 @@ Decode is 22-27% faster than the Q4/Q5 artifact in every category, with the devi
 6.1-6.6 ms per MTP3 round. Prefill is 5-6x *slower*: every NVFP4 site is `A16Only`, and the A16
 route runs prompts through 32-token SIMT chunks. The W4A4 route (port guide §8.1) is the fix;
 this campaign is the A16 baseline it is measured against.
+
+### W4A4 route (deployed artifact, 2026-09-22)
+
+Artifact `qwen3_5_9b_nvfp4_v3.ninfer` SHA-256
+`741218f9d2d60b390a85c822192352eb10731b1907678c7bee3746bdbb968ebb` (A4 sites, Q6 head, Q8 MTP;
+the A16 build above is kept as `qwen3_5_9b_nvfp4a16_v3.ninfer`). Same engine flags.
+
+| Measurement | Q4/Q5 | NVFP4 A16 | NVFP4 W4A4 |
+|---|---:|---:|---:|
+| 7,881-token prompt prefill (single request) | ~10.7k tok/s | 1.85k tok/s | **33.0k tok/s** |
+| ninfer-perplexity score rate | — | 918 tok/s | 12,039 tok/s |
+| quick perplexity | 5.074 | 5.201 | 5.302 |
+| quick decode harness, 5 prompts × 256 tokens, MTP3 mean | — | — | 467 tok/s |
+| smoke decode, short prompts | 425–522 | 605–692 | 605–619 |
+
+The quick harness (`~/Projects/ninfer-repro/quick-decode.sh`) is a five-prompt greedy mean,
+not the corpus campaign; the A16 campaign above remains the only methodology-grade decode
+measurement, and decode rounds take the same A16 kernels on both artifacts. Port guide §8.2
+lists the decode experiments that were measured and rejected (draft length, NVFP4 head and
+MTP, proposal rows, SIMT schedules) with their numbers.
